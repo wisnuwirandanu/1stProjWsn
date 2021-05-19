@@ -1,0 +1,1 @@
+This Project purpose to copy application to new servers

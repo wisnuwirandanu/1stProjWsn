@@ -1,0 +1,144 @@
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+
+  tasks:
+
+  - name: Check Directory Active...
+    stat:
+      path: /localrepos/jenkins
+    register: file_details
+  - debug:
+      msg: The file or directory exists!
+    when: file_details.stat.exists == True 
+
+  - name: Create directory
+    file: path={{ item }} state=directory
+    with_items:
+      - '/opt/app'
+      - '/localrepos/createrepo'
+      - '/localrepos/jenkins'
+      - '/localrepos/git'
+      - '/localrepos/mercurial'
+      - '/localrepos/scm' 
+      - '/localrepos/java'
+      - '/localrepos/telegraf'
+    when: file_details.stat.exists == False
+
+  - name: Extract pack.tar.gz into /opt/
+    unarchive:
+      src: /opt/ansible-app-ins/files/pack.tar.gz
+      dest: /opt/app
+      keep_newer: no
+    when: file_details.stat.exists == False
+
+  - name: Move all repo's to localrepos
+    shell: |
+      mv /opt/app/{{ item }} /localrepos
+    with_items:
+      - ['jenkins','git','mercurial','createrepo','java','scm','telegraf']
+    when: file_details.stat.exists == False
+
+  - name: Make repo jenkins /localrepos/jenkins/jenkins.io.key
+    command: rpm --import /localrepos/jenkins/jenkins.io.key
+    when: file_details.stat.exists == False
+
+  - name: Checking installed createrepo
+    command: createrepo --version
+    register: cr_result
+    ignore_errors: True
+
+  - debug:
+      msg: "Success - createrepo installed"
+    when:  cr_result is success
+
+  - name: Install createrepo
+    shell: |
+      createrepo /localrepos/
+      yum -y localinstall /localrepos/createrepo/*
+    when: cr_result is failed
+
+  - name: Check if java is installed
+    command: java -version
+    register: java_result
+    ignore_errors: True
+
+  - name: Install JDK 1.8 for jenkins
+    shell: |
+      yum -y localinstall /localrepos/java/jdk*
+    when: java_result is failed
+
+  - name: Install jenkins
+    shell: |
+      yum -y localinstall /localrepos/jenkins/*
+
+  - name: Stop Application Jenkinks
+    service:
+      name: jenkins
+      state: stopped
+
+  - name: Install git
+    shell: |
+      yum -y localinstall /localrepos/git/*
+
+  - name: Install mercurial
+    shell: |
+      yum -y localinstall /localrepos/mercurial/*
+
+  - name: Install scm
+    shell: |
+      yum -y localinstall /localrepos/scm/*
+      chown -Rf scm:scm /var/lib/scm/
+
+  - name: Change port scm to 9092
+    lineinfile:
+      path: /etc/default/scm-server
+      # The String to Search
+      regexp: "PORT=8080"
+      # The String to Replace
+      line: "PORT=9092"
+      state: present
+      backup: yes
+
+  - name: Run Application scm-server 
+    service:
+      name: scm-server
+      enabled: yes
+      state: started
+
+  - firewalld:
+      zone: public
+      port: "{{ item.port }}"
+      permanent: "{{ item.permanent }}"
+      state: enabled
+    with_items:
+      - { port: '8080/tcp', permanent: true }
+      - { port: '9092/tcp', permanent: true }
+
+  - name: Install telegraf
+    shell: |
+      yum -y localinstall /localrepos/telegraf/*
+      firewall-cmd --reload
+      systemctl daemon-reload
+
+  - name: Run Application telegraf
+    service:
+      name: telegraf
+      enabled: yes
+      state: started
+
+  - name: rewrite /var/lib/jenkins
+    shell: |
+      yes | cp -rvf /opt/app/varlibjenkins/jenkins/ /var/lib/
+
+  - name: Change file ownership, group and permissions Jenkins
+    file:
+      path: /var/lib/jenkins
+      owner: jenkins
+      group: jenkins
+
+  - name: Run Application Jenkinks
+    service:
+      name: jenkins
+      state: started

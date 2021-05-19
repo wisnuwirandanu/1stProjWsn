@@ -1,0 +1,6 @@
+#10.247.37.115 ansible_user=root ansible_ssh_pass=Password #--> Danamon Server
+#10.247.37.116 ansible_user=root ansible_ssh_pass=Password #--> BNI Server
+10.247.39.202 ansible_user=root ansible_ssh_pass=password #--> Permata Server
+
+#192.168.122.100 ansible_user=root ansible_ssh_pass=password #--> VM local 
+#192.168.122.124 ansible_user=root ansible_ssh_pass=password #--> VM local
